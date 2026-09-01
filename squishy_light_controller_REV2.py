@@ -271,39 +271,32 @@ class LightPomodoroApp(QMainWindow):
             # Check if the click happened on the *window*, not a child widget
             # child = self.childAt(event.position().toPoint())
             # if child is None:  # Blank space only
+            # Update the window position to the top-right corner of the current screen
+            self.current_screen = QApplication.screenAt(self.pos())
+            self.x = self.current_screen.geometry().x() + self.current_screen.geometry().width() - self.width()
+            self.y = self.current_screen.geometry().y() + self.current_screen.geometry().height() - self.height() - self.taskbar_height
             # Move window to a new screen location
             self.move(self.x, self.y)
         super().mouseDoubleClickEvent(event)
 
     def init_ui(self):
-        self.setWindowTitle("LED Pomodoro")
-        # Want to display on bottom right of right screen
-        screen_index = 1
+        self.setWindowTitle("LED Pomodoro")        
         # Get list of available screens
         screens = QApplication.screens()
-        if screen_index >= len(screens):
-            screen_index = 0  # fallback to primary screen
 
         self.resize(self.window_width, self.window_height) 
-        
-        target_screen = screens[screen_index]
 
-        # Get screen geometry
-        geo = target_screen.geometry()
+        # Determine the taskbar height by comparing the screen geometry and available geometry
+        primary_screen = QApplication.primaryScreen()
+        geo = primary_screen.geometry()
+        available_geometry = primary_screen.availableGeometry()
+        self.taskbar_height = geo.height() - available_geometry.height()
 
-        # Available geometry (excludes taskbar)
-        available_geometry = target_screen.availableGeometry()
-        available_width = available_geometry.width()
-        available_height = available_geometry.height()
-
-        # Taskbar height (assuming taskbar is at bottom)
-        taskbar_height = geo.height() - available_height
-
-        # print(f"Placing window on screen {screen_index}: {geo}")
-
-        # Calculate top-right position
-        self.x = geo.x() + geo.width() - self.width()
-        self.y = geo.y() + geo.height() - self.height() - taskbar_height
+        # Target screen is the current screen that the window is on (or the specified screen index)
+        # Get the current screen index based on the window's position
+        self.current_screen = QApplication.screenAt(self.pos())
+        self.x = self.current_screen.geometry().x() + self.current_screen.geometry().width() - self.width()
+        self.y = self.current_screen.geometry().y() + self.current_screen.geometry().height() - self.height() - self.taskbar_height
 
         # Move window safely inside screen area
         if self.x == 0 and self.y == 0:
@@ -512,6 +505,9 @@ class LightPomodoroApp(QMainWindow):
 
     # ---- Toggle connection ----
     def toggle_connection(self):
+        # Update the port list in case a new device was plugged in
+        self.port_combo.clear()
+        self.serial.get_ports()
         if not self.serial.is_connected:
             port = self.port_combo.currentText()
             if port != "No ports" and self.serial.connect(port):
