@@ -127,6 +127,7 @@ The resulting `.exe` can be:
 **Icon doesn't show?**
 - The build will still complete without `toad.ico` — it just falls back to the default icon
 - Make sure `toad.png` is a valid image before converting
+- Sometimes the icon will not show unless pinned to taskbar
 
 **.exe won't run?**
 - Launch it from a command prompt to see the actual error output

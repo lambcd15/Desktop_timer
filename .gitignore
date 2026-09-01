@@ -1,0 +1,4 @@
+# Operating system files
+dist/
+build/
+Thumbs.db
