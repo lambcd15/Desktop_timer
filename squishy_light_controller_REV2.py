@@ -321,6 +321,13 @@ class LightPomodoroApp(QMainWindow):
             }
             QComboBox {
                 background-color: #1e1e1e;
+                border: none;
+                border-radius: 4px;
+                padding: 2px;
+            }
+            QSpinBox {
+                background-color: #888;
+                # border: none;
                 border-radius: 4px;
                 padding: 2px;
             }
