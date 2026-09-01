@@ -261,8 +261,6 @@ class LightPomodoroApp(QMainWindow):
             else:
                 self.break_flash_enabled = bool(raw)
 
-        
-
     def mouseDoubleClickEvent(self, event):
         """
         This is called when the user double-clicks inside the window.
@@ -507,7 +505,8 @@ class LightPomodoroApp(QMainWindow):
     def toggle_connection(self):
         # Update the port list in case a new device was plugged in
         self.port_combo.clear()
-        self.serial.get_ports()
+        # self.serial.get_ports()
+        self.port_combo.addItems(self.serial.get_ports() or ["No ports"])
         if not self.serial.is_connected:
             port = self.port_combo.currentText()
             if port != "No ports" and self.serial.connect(port):
