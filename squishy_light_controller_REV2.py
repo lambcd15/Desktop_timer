@@ -326,8 +326,8 @@ class LightPomodoroApp(QMainWindow):
                 padding: 2px;
             }
             QSpinBox {
-                background-color: #888;
-                # border: none;
+                background-color: #1b1b1b;
+                border: none;
                 border-radius: 4px;
                 padding: 2px;
             }
@@ -575,21 +575,24 @@ class LightPomodoroApp(QMainWindow):
         self.time_left -= 1
         mins, secs = divmod(self.time_left, 60)
         self.time_label.setText(f"{mins:02d}:{secs:02d}")
-
+        # Handle break flash effect
         if self.is_break:
+            # 
             index = 1
-            if self.break_flash_enabled:
-                if self._state:
-                    self.send_rgb_color(self.colors[index][0], self.colors[index][1], self.colors[index][2])
-                    self.time_label.setStyleSheet(f"font-size: 22px; font-weight: bold; background-color: rgb({self.colors[index][0]},{self.colors[index][1]},{self.colors[index][2]}); color: rgb(255,255,255);")
-                else:
-                    self.serial.send("OFF")
-                    self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
-                self._state = not self._state
-            else:
+            # flash the break color on and off every second if enabled using a state toggle
+            if self._state:
                 self.send_rgb_color(self.colors[index][0], self.colors[index][1], self.colors[index][2])
-                self.time_label.setStyleSheet(f"font-size: 22px; font-weight: bold; background-color: rgb({self.colors[index][0]},{self.colors[index][1]},{self.colors[index][2]}); color: rgb(255,255,255);")
+                if self.break_flash_enabled:
+                    self.time_label.setStyleSheet(f"font-size: 22px; font-weight: bold; background-color: rgb({self.colors[index][0]},{self.colors[index][1]},{self.colors[index][2]}); color: rgb(255,255,255);")
+            else:
+                self.serial.send("OFF")
+                if self.break_flash_enabled:
+                    self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+            self._state = not self._state
 
+            if not self.break_flash_enabled:
+                self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+        
         if self.time_left <= 0:
             if self.is_break:
                 self.is_break = False
