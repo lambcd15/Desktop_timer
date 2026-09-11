@@ -222,8 +222,8 @@ class LightPomodoroApp(QMainWindow):
 
         self.current_color = [0,0,0] # Stores the last sent colour for effects
 
-        self.window_width = 120
-        self.window_height = 175
+        self.window_width = 105
+        self.window_height = 150
 
         # Load settings when the app starts
         self.load_settings()
@@ -317,10 +317,10 @@ class LightPomodoroApp(QMainWindow):
                 margin: 2px;
             }
             QPushButton:pressed {
-                border: 2px solid #888;
+                border: 1px solid #888;
             }
             QComboBox {
-                background-color: #1e1e1e;
+                background-color: #1b1b1b;
                 border: none;
                 border-radius: 4px;
                 padding: 2px;
@@ -338,7 +338,7 @@ class LightPomodoroApp(QMainWindow):
 
         central = QWidget()
         layout = QVBoxLayout(central)
-        layout.setSpacing(6)
+        layout.setSpacing(0)
 
         # Close button (hidden until hover top)
         self.close_btn = QPushButton("×")
@@ -357,7 +357,7 @@ class LightPomodoroApp(QMainWindow):
         self.port_combo.addItems(self.serial.get_ports() or ["No ports"])
         conn_layout.addWidget(self.port_combo)
         self.connect_btn = QPushButton("⏺")
-        self.connect_btn.setFixedWidth(15)
+        self.connect_btn.setFixedSize(15, 16)
         self.connect_btn.clicked.connect(self.toggle_connection)
         conn_layout.addWidget(self.connect_btn)
         layout.addLayout(conn_layout)
@@ -385,7 +385,7 @@ class LightPomodoroApp(QMainWindow):
         # Pomodoro settings
         settings_layout = QHBoxLayout()
         self.focus_spin = QSpinBox()
-        self.focus_spin.setRange(1, 60)
+        self.focus_spin.setRange(1, 99)
         self.focus_spin.setValue(self.focus_minutes)
         self.focus_spin.setFixedWidth(35)
         self.focus_spin.valueChanged.connect(self.update_time)
@@ -394,7 +394,7 @@ class LightPomodoroApp(QMainWindow):
         settings_layout.addWidget(self.focus_spin)
 
         self.break_spin = QSpinBox()
-        self.break_spin.setRange(1, 60)
+        self.break_spin.setRange(1, 99)
         self.break_spin.setValue(self.break_minutes)
         self.break_spin.setFixedWidth(35)
         self.break_spin.valueChanged.connect(lambda v: setattr(self, "break_minutes", v))
@@ -410,25 +410,25 @@ class LightPomodoroApp(QMainWindow):
         self.time_label = QLabel(f"{self.focus_minutes}:00")
         self.time_label.setObjectName("timeLabel")
         self.time_label.setAlignment(Qt.AlignCenter)
-        self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+        self.time_label.setStyleSheet("font-size: 24px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
         layout.addWidget(self.time_label)
 
         # Control buttons
         ctrl_layout = QHBoxLayout()
         start_btn = QPushButton("▶")
-        start_btn.setFixedWidth(20)
+        start_btn.setFixedSize(20, 16)
         start_btn.setStyleSheet("font-size: 10px; font-weight: bold;")
         start_btn.clicked.connect(self.start_pomodoro)
         ctrl_layout.addWidget(start_btn)
 
         stop_btn = QPushButton("■")
-        stop_btn.setFixedWidth(20)
+        stop_btn.setFixedSize(20, 16)
         stop_btn.clicked.connect(self.stop_pomodoro)
         stop_btn.setStyleSheet("font-size: 10px; font-weight: bold;")
         ctrl_layout.addWidget(stop_btn)
 
         effects_btn = QPushButton("⬤")
-        effects_btn.setFixedWidth(20)
+        effects_btn.setFixedSize(20, 16)
         effects_btn.clicked.connect(self.open_effects)
         effects_btn.setStyleSheet("font-size: 10px; font-weight: bold;")
         ctrl_layout.addWidget(effects_btn)
