@@ -18,8 +18,19 @@ class EffectsDialog(QDialog):
     """Popup dialog to select an effect."""
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        self.setStyleSheet("""
+                    QPushButton  {
+                        min-width: 50px;
+                        min-height: 35px;
+                    }
+        """)
+
         # Create a list of the effects in a new window
         self.setWindowTitle("Select Effect")
+        self.window_width = 105
+        self.window_height = 300
+        self.resize(self.window_width, self.window_height) 
         layout = QVBoxLayout(self)
         self.parent_widget = parent
         self.effect_list = QListWidget()
@@ -39,10 +50,11 @@ class EffectsDialog(QDialog):
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         button_box.setCenterButtons(True)
+        # button_box.accepted.setFixedSize(300, 20)
         if button_box.layout() is not None:
-            button_box.layout().setSpacing(10)
+            # button_box.layout().setSpacing(200)
             button_box.layout().setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(24)
+        layout.setSpacing(5)
         layout.addWidget(button_box)
 
     def selected_effect(self):
