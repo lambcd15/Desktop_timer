@@ -3,7 +3,7 @@ import sys
 import time
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
-    QPushButton, QLabel, QComboBox, QHBoxLayout, QSpinBox, QColorDialog
+    QPushButton, QLabel, QComboBox, QHBoxLayout, QSpinBox, QColorDialog, QSlider, QSizePolicy
 )
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtSerialPort import QSerialPort, QSerialPortInfo
@@ -29,10 +29,20 @@ class EffectsDialog(QDialog):
         # Create a list of the effects in a new window
         self.setWindowTitle("Select Effect")
         self.window_width = 105
-        self.window_height = 300
+        self.window_height = 350
         self.resize(self.window_width, self.window_height) 
         layout = QVBoxLayout(self)
         self.parent_widget = parent
+
+        # Serial connection rows (LED strip and fan)
+        if self.parent_widget:
+            layout.addWidget(QLabel("LED port:"))
+            self.led_combo, self.led_btn = self.add_connection_row(
+                layout, self.parent_widget.serial, self.parent_widget.fan_serial, "led_port")
+            layout.addWidget(QLabel("Fan port:"))
+            self.fan_combo, self.fan_btn = self.add_connection_row(
+                layout, self.parent_widget.fan_serial, self.parent_widget.serial, "fan_port")
+
         self.effect_list = QListWidget()
         # Effect list 
         self.effect_list.addItems(["SENSOR_MODE","INTENSITY", "COMET+","COMET-","BREATHING","GRADIENT","CANDLE","BEAT"])
@@ -56,6 +66,33 @@ class EffectsDialog(QDialog):
             button_box.layout().setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
         layout.addWidget(button_box)
+
+    def add_connection_row(self, layout, manager, other, port_attr):
+        row = QHBoxLayout()
+        combo = QComboBox()
+        btn = QPushButton("⏹" if manager.is_connected else "⏺")
+        btn.setStyleSheet("min-width: 15px; max-width: 15px; min-height: 16px; max-height: 16px;")
+        self.refresh_ports(combo, manager, port_attr)
+        btn.clicked.connect(lambda: self.on_toggle(manager, other, combo, btn, port_attr))
+        row.addWidget(combo)
+        row.addWidget(btn)
+        layout.addLayout(row)
+        return combo, btn
+
+    def on_toggle(self, manager, other, combo, btn, port_attr):
+        self.parent_widget.toggle_connection(manager, other, combo, btn, port_attr)
+        # Update the port list in case a device was plugged in
+        self.refresh_ports(combo, manager, port_attr)
+
+    def refresh_ports(self, combo, manager, port_attr):
+        combo.clear()
+        combo.addItems(manager.get_ports() or ["No ports"])
+        # Preselect the connected port, otherwise the last saved one
+        port = manager.serial_port.portName() if manager.is_connected else getattr(self.parent_widget, port_attr)
+        if port:
+            idx = combo.findText(port)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
 
     def selected_effect(self):
         item = self.effect_list.currentItem()
@@ -171,6 +208,22 @@ class CustomColorButton(QPushButton):
             self.parent_widget.send_rgb_color(self.parent_widget.colors[self.index][0],self.parent_widget.colors[self.index][1],self.parent_widget.colors[self.index][2])
             pass
 
+class StepSlider(QSlider):
+    """Slider where each mouse-wheel notch moves exactly one step."""
+
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self._wheel_delta = 0
+
+    def wheelEvent(self, event):
+        # Accumulate so high-resolution wheels/touchpads still step once per notch
+        self._wheel_delta += event.angleDelta().y() or event.angleDelta().x()
+        steps = int(self._wheel_delta / 120)
+        if steps:
+            self._wheel_delta -= steps * 120
+            self.setValue(self.value() + steps * self.singleStep())
+        event.accept()
+
 class SerialManager:
     def __init__(self):
         self.serial_port = QSerialPort()
@@ -203,6 +256,15 @@ class LightPomodoroApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.serial = SerialManager()
+        self.fan_serial = SerialManager()
+        self.fan_speed = 0
+        self.led_port = ""
+        self.fan_port = ""
+        # Debounce fan commands while the slider is dragged
+        self.fan_timer = QTimer()
+        self.fan_timer.setSingleShot(True)
+        self.fan_timer.setInterval(100)
+        self.fan_timer.timeout.connect(self.send_fan_speed)
         # Pomodoro state
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick)
@@ -234,13 +296,16 @@ class LightPomodoroApp(QMainWindow):
 
         self.current_color = [0,0,0] # Stores the last sent colour for effects
 
-        self.window_width = 105
-        self.window_height = 150
+        self.window_width = 100
+        self.window_height = 140
 
         # Load settings when the app starts
         self.load_settings()
 
         self.init_ui()
+
+        # Reconnect to the last used ports once the window is up
+        QTimer.singleShot(0, self.auto_connect)
 
     def load_settings(self):
         settings = QSettings("MyCompany", "LED Pomodoro")
@@ -273,6 +338,10 @@ class LightPomodoroApp(QMainWindow):
             else:
                 self.break_flash_enabled = bool(raw)
 
+        self.fan_speed = int(settings.value("fan_speed", 0))
+        self.led_port = settings.value("led_port", "") or ""
+        self.fan_port = settings.value("fan_port", "") or ""
+
     def mouseDoubleClickEvent(self, event):
         """
         This is called when the user double-clicks inside the window.
@@ -282,7 +351,7 @@ class LightPomodoroApp(QMainWindow):
             # child = self.childAt(event.position().toPoint())
             # if child is None:  # Blank space only
             # Update the window position to the top-right corner of the current screen
-            self.current_screen = QApplication.screenAt(self.pos())
+            self.current_screen = QApplication.screenAt(self.pos()) or QApplication.primaryScreen()
             self.x = self.current_screen.geometry().x() + self.current_screen.geometry().width() - self.width()
             self.y = self.current_screen.geometry().y() + self.current_screen.geometry().height() - self.height() - self.taskbar_height
             # Move window to a new screen location
@@ -304,16 +373,17 @@ class LightPomodoroApp(QMainWindow):
 
         # Target screen is the current screen that the window is on (or the specified screen index)
         # Get the current screen index based on the window's position
-        self.current_screen = QApplication.screenAt(self.pos())
-        self.x = self.current_screen.geometry().x() + self.current_screen.geometry().width() - self.width()
-        self.y = self.current_screen.geometry().y() + self.current_screen.geometry().height() - self.height() - self.taskbar_height
-
-        # Move window safely inside screen area
-        if self.x == 0 and self.y == 0:
-            self.move(self.x, self.y)
+        self.current_screen = QApplication.screenAt(self.frameGeometry().center()) or primary_screen
+        available_geometry = self.current_screen.availableGeometry()
+        self.x = available_geometry.right() - self.width() + 1
+        self.y = available_geometry.bottom() - self.height() + 1
 
         # Frameless, always on top
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        # Transparent window so the rounded central widget shows its corners
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        if not available_geometry.contains(self.frameGeometry()):
+            self.move(self.x, self.y)
 
         # Dark theme
         self.setStyleSheet("""
@@ -321,6 +391,12 @@ class LightPomodoroApp(QMainWindow):
                 background-color: #121212;
                 color: #f0f0f0;
                 font-size: 12px;
+            }
+            QMainWindow {
+                background: transparent;
+            }
+            QWidget#central {
+                border-radius: 8px;
             }
             QPushButton {
                 border-radius: 6px;
@@ -349,8 +425,10 @@ class LightPomodoroApp(QMainWindow):
         """)
 
         central = QWidget()
+        central.setObjectName("central")
         layout = QVBoxLayout(central)
         layout.setSpacing(0)
+        layout.setContentsMargins(6, 4, 6, 4)
 
         # Close button (hidden until hover top)
         self.close_btn = QPushButton("×")
@@ -363,16 +441,29 @@ class LightPomodoroApp(QMainWindow):
         self.close_btn.hide()
         layout.addWidget(self.close_btn, alignment=Qt.AlignRight)
 
-        # Connection row
-        conn_layout = QHBoxLayout()
-        self.port_combo = QComboBox()
-        self.port_combo.addItems(self.serial.get_ports() or ["No ports"])
-        conn_layout.addWidget(self.port_combo)
-        self.connect_btn = QPushButton("⏺")
-        self.connect_btn.setFixedSize(15, 16)
-        self.connect_btn.clicked.connect(self.toggle_connection)
-        conn_layout.addWidget(self.connect_btn)
-        layout.addLayout(conn_layout)
+        # Fan speed row (serial connections live in the effects dialog)
+        fan_layout = QHBoxLayout()
+        self.fan_slider = StepSlider(Qt.Horizontal)
+        # Slider works in 5% steps (0-20 -> 0-100%)
+        self.fan_speed = round(self.fan_speed / 5) * 5
+        self.fan_slider.setRange(0, 20)
+        self.fan_slider.setSingleStep(1)
+        self.fan_slider.setPageStep(2)
+        self.fan_slider.setValue(self.fan_speed // 5)
+        self.fan_slider.setFixedHeight(16)
+        self.fan_slider.setStyleSheet("""
+            QSlider::groove:horizontal { height: 4px; background: #333; border-radius: 2px; }
+            QSlider::sub-page:horizontal { background: #3a7bd5; border-radius: 2px; }
+            QSlider::handle:horizontal { width: 10px; margin: -4px 0; background: #ccc; border-radius: 5px; }
+        """)
+        self.fan_slider.valueChanged.connect(self.update_fan_speed)
+        fan_layout.addWidget(self.fan_slider)
+        self.fan_label = QLabel(f"{self.fan_speed}")
+        self.fan_label.setFixedSize(22, 16)
+        self.fan_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.fan_label.setToolTip("Fan speed (%)")
+        fan_layout.addWidget(self.fan_label)
+        layout.addLayout(fan_layout)
 
         # LED color buttons
         led_layout = QHBoxLayout()
@@ -415,14 +506,18 @@ class LightPomodoroApp(QMainWindow):
         layout.addLayout(settings_layout)
 
         # Pomodoro display
+        # Fixed heights and sizes so status text changes never shift the timer
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setFixedHeight(18)
+        self.status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         layout.addWidget(self.status_label)
 
-        self.time_label = QLabel(f"{self.focus_minutes}:00")
+        self.time_label = QLabel(f"{self.focus_minutes:02d}:00")
         self.time_label.setObjectName("timeLabel")
         self.time_label.setAlignment(Qt.AlignCenter)
-        self.time_label.setStyleSheet("font-size: 24px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+        self.time_label.setFixedHeight(32)
+        self.set_time_style()
         layout.addWidget(self.time_label)
 
         # Control buttons
@@ -472,10 +567,13 @@ class LightPomodoroApp(QMainWindow):
                 return self.serial.send(command)
 
 
+    def set_time_style(self, bg=(18, 18, 18)):
+        self.time_label.setStyleSheet(f"font-size: 22px; font-weight: bold; background-color: rgb({bg[0]},{bg[1]},{bg[2]}); color: rgb(255,255,255);")
+
     def update_time(self, v):
         setattr(self, "focus_minutes", v)
         if not self.is_running:  
-            self.time_label.setText(f"{self.focus_minutes}:00")
+            self.time_label.setText(f"{self.focus_minutes:02d}:00")
 
     def closeEvent(self, event):
         # Save settings when the app closes
@@ -497,6 +595,9 @@ class LightPomodoroApp(QMainWindow):
         settings.setValue("f_mins", self.focus_minutes)
         settings.setValue("b_mins", self.break_minutes)
         settings.setValue("break_flash_enabled", self.break_flash_enabled)
+        settings.setValue("fan_speed", self.fan_speed)
+        settings.setValue("led_port", self.led_port)
+        settings.setValue("fan_port", self.fan_port)
         settings.sync()
 
     # ---- Show close only near top ----
@@ -521,20 +622,46 @@ class LightPomodoroApp(QMainWindow):
         self.drag_pos = None
 
     # ---- Toggle connection ----
-    def toggle_connection(self):
-        # Update the port list in case a new device was plugged in
-        self.port_combo.clear()
-        # self.serial.get_ports()
-        self.port_combo.addItems(self.serial.get_ports() or ["No ports"])
-        if not self.serial.is_connected:
-            port = self.port_combo.currentText()
-            if port != "No ports" and self.serial.connect(port):
-                self.status_label.setText("Connected")
-                self.connect_btn.setText("⏹")
+    def toggle_connection(self, manager, other, combo, button, port_attr):
+        name = "Fan" if manager is self.fan_serial else "LED"
+        if not manager.is_connected:
+            port = combo.currentText()
+            # Don't open the port already used by the other device
+            if other.is_connected and other.serial_port.portName() == port:
+                self.status_label.setText("Port in use")
+                return
+            if port != "No ports" and manager.connect(port):
+                setattr(self, port_attr, port)
+                self.status_label.setText(f"{name} on")
+                button.setText("⏹")
+                if manager is self.fan_serial:
+                    self.send_fan_speed()
+            else:
+                self.status_label.setText(f"{name} failed")
         else:
-            self.serial.disconnect()
-            self.status_label.setText("Disconnected")
-            self.connect_btn.setText("⏺")
+            manager.disconnect()
+            self.status_label.setText(f"{name} off")
+            button.setText("⏺")
+
+    def auto_connect(self):
+        available = self.serial.get_ports()
+        connected = []
+        for manager, port in ((self.serial, self.led_port), (self.fan_serial, self.fan_port)):
+            if port and port in available and port not in connected and manager.connect(port):
+                connected.append(port)
+                if manager is self.fan_serial:
+                    self.send_fan_speed()
+        if connected:
+            self.status_label.setText("Connected")
+
+    # ---- Fan speed ----
+    def update_fan_speed(self, value):
+        self.fan_speed = value * 5
+        self.fan_label.setText(f"{self.fan_speed}")
+        self.fan_timer.start()
+
+    def send_fan_speed(self):
+        self.fan_serial.send(f"S{self.fan_speed}")
 
     # ---- Custom colour send ----
     def send_rgb_color(self, r: int, g: int, b: int) -> bool:
@@ -571,7 +698,7 @@ class LightPomodoroApp(QMainWindow):
             index = 0
             self.send_rgb_color(self.colors[index][0], self.colors[index][1], self.colors[index][2])
             self.status_label.setText("Focus")
-            self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+            self.set_time_style()
 
     def stop_pomodoro(self):
         self.is_running = False
@@ -579,7 +706,7 @@ class LightPomodoroApp(QMainWindow):
         self.serial.send("OFF")
         self.status_label.setText("Stopped")
         self.time_label.setText(f"{self.focus_minutes:02d}:00")
-        self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+        self.set_time_style()
 
     def tick(self):
         if not self.is_running:
@@ -595,15 +722,15 @@ class LightPomodoroApp(QMainWindow):
             if self._state:
                 self.send_rgb_color(self.colors[index][0], self.colors[index][1], self.colors[index][2])
                 if self.break_flash_enabled:
-                    self.time_label.setStyleSheet(f"font-size: 22px; font-weight: bold; background-color: rgb({self.colors[index][0]},{self.colors[index][1]},{self.colors[index][2]}); color: rgb(255,255,255);")
+                    self.set_time_style(self.colors[index])
             else:
                 self.serial.send("OFF")
                 if self.break_flash_enabled:
-                    self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+                    self.set_time_style()
             self._state = not self._state
 
             if not self.break_flash_enabled:
-                self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+                self.set_time_style()
         
         if self.time_left <= 0:
             if self.is_break:
@@ -612,14 +739,14 @@ class LightPomodoroApp(QMainWindow):
                 index = 0
                 self.send_rgb_color(self.colors[index][0], self.colors[index][1], self.colors[index][2])
                 self.status_label.setText("Focus")
-                self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+                self.set_time_style()
             else:
                 self.is_break = True
                 self.time_left = self.break_minutes * 60
                 index = 1
                 self.send_rgb_color(self.colors[index][0], self.colors[index][1], self.colors[index][2])
                 self.status_label.setText("Break")
-                self.time_label.setStyleSheet("font-size: 22px; font-weight: bold; background-color: rgb(18,18,18); color: rgb(255,255,255);")
+                self.set_time_style()
                 self._state = True
 
 def main():

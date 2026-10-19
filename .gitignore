@@ -3,3 +3,4 @@ dist/
 build/
 Thumbs.db
 BUILD_INSTRUCTIONS.md
+__pycache__/

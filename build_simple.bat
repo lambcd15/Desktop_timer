@@ -5,7 +5,7 @@ echo ===============================================
 echo.
 
 echo Installing requirements...
-pip install pyinstaller pillow
+pip install -r requirements.txt
 
 echo.
 echo Converting icon...
@@ -13,7 +13,7 @@ python -c "from PIL import Image; img = Image.open('toad.png'); img.save('toad.i
 
 echo.
 echo Building executable...
-pyinstaller --onefile --windowed --icon=toad.ico --name="SquishyLightController" squishy_light_controller.py
+pyinstaller --clean --noconfirm squishy_light_controller.spec
 
 echo.
 echo ===============================================
@@ -24,7 +24,7 @@ echo   dist\SquishyLightController.exe
 echo.
 echo If Windows asks what to open it with:
 echo   1. Right-click the .exe
-echo   2. Select "Open with" -> "Choose another app"
+echo   2. Select "Open with" then "Choose another app"
 echo   3. Check "Always use this app to open .exe files"
 echo   4. Select "Windows Explorer" or click OK
 echo ===============================================
